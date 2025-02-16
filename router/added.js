@@ -4,9 +4,12 @@ const {Spending} = require('../models/data');
 const auth = require('../utils/auth'); 
 
 
-router.get('/added', auth,async (req, res) => {
+router.get('/added', auth, async (req, res) => {
     try {
-        const expenses = await Spending.findAll();
+        // Only fetch expenses belonging to the logged-in user
+        const expenses = await Spending.findAll({
+            where: { userId: req.user.id }
+        });
 
         let tableRows = expenses.map(expense => `
             <tr>
@@ -102,14 +105,49 @@ router.get('/added', auth,async (req, res) => {
     }
 });
 
-router.post('/expense/delete', async (req, res) => {
+router.post('/expense/delete', auth, async (req, res) => {
     try {
         const { id } = req.body;
-        await Spending.destroy({ where: { id } });
-        res.redirect('/added');
+        
+        // First find the expense
+        const expense = await Spending.findOne({ 
+            where: { 
+                id: id,
+            }
+        });
+
+        // Check if expense exists
+        if (!expense) {
+            return res.status(404).send(`
+                <script>
+                    alert('Expense not found');
+                    window.location.href = '/added';
+                </script>
+            `);
+        }
+
+        // Check if the expense belongs to the logged-in user
+        if (expense.userId !== req.user.id) {
+            return res.status(403).send(`
+                <script>
+                    alert('You are not authorized to delete this expense');
+                    window.location.href = '/added';
+                </script>
+            `);
+        }
+
+        // If all checks pass, delete the expense
+        await Spending.destroy({ 
+            where: { 
+                id: id,
+                userId: req.user.id 
+            } 
+        });
+        
+        return res.redirect('/added');
     } catch (error) {
         console.log(error);
-        res.status(500).send(`<h1>Error deleting expense</h1>`);
+        return res.status(500).send(`<h1>Error deleting expense</h1>`);
     }
 });
 
